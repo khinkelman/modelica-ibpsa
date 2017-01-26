@@ -94,10 +94,14 @@ model ConservationEquation "Lumped volume with mass and energy balance"
      X=X_start[1:Medium.nXi])) +
     (T_start - Medium.reference_T)*CSen,
     nominal = 1E5) "Internal energy of fluid";
+
   Modelica.SIunits.Mass m "Mass of fluid";
+
   Modelica.SIunits.Mass[Medium.nXi] mXi
     "Masses of independent components in the fluid";
+
   Modelica.SIunits.Mass[Medium.nC] mC "Masses of trace substances in the fluid";
+
   // C need to be added here because unlike for Xi, which has medium.Xi,
   // there is no variable medium.C
   Medium.ExtraProperty C[Medium.nC](nominal=C_nominal)
@@ -113,10 +117,59 @@ model ConservationEquation "Lumped volume with mass and energy balance"
 
   // Parameters that need to be defined by an extending class
   parameter Modelica.SIunits.Volume fluidVolume "Volume";
+
   final parameter Modelica.SIunits.HeatCapacity CSen=
     (mSenFac - 1)*rho_default*cp_default*fluidVolume
     "Aditional heat capacity for implementing mFactor";
+
+  // Normalized state variables.
+  // These require setting stateSelect = StateSelect.default
+  // if the balance is steady-state. Otherwise, if this model
+  // is used for a steady-state balance (with two ports),
+  // h_outflow may be used as a state, and a division by
+  // zero can occur. This happened in Dymola 2017 FD01 on Linux for
+  // Annex60.Fluid.MixingVolumes.Validation.MixingVolumeHeatReverseFlow
+  // commit: 87794612b0bd4948dfc78a5bbbd75bf5bda08552
+  Real m_norm(
+    final unit="1",
+    stateSelect=if massDynamics == Modelica.Fluid.Types.Dynamics.SteadyState
+                then StateSelect.default else StateSelect.prefer) = m * conM
+    "Normalized mass (auxiliary variable to have a normalized state variable)";
+
+  Real U_norm(
+    stateSelect=if energyDynamics == Modelica.Fluid.Types.Dynamics.SteadyState
+                then StateSelect.default else StateSelect.prefer) = U * conU
+    "Normalized internal energy of fluid (auxiliary variable to have a normalized state variable)";
+
+  Real mXi_norm[Medium.nXi](
+    each stateSelect=if substanceDynamics == Modelica.Fluid.Types.Dynamics.SteadyState
+                     then StateSelect.default else StateSelect.prefer) = mXi .* conMXi
+    "Normalized mass fraction of fluid (auxiliary variable to have a normalized state variable)";
+
+  Real[Medium.nC] mC_norm(
+    each final unit="1",
+    each stateSelect=if traceDynamics == Modelica.Fluid.Types.Dynamics.SteadyState
+                     then StateSelect.default else StateSelect.prefer) = mC .* conMC
+    "Normalized mass of trace substances in the fluid (auxiliary variable to have a normalized state variable)";
+
+
 protected
+  parameter Real conM = 1/(fluidVolume*rho_default)
+    "Conversion factor to normalize the mass"
+    annotation(Evaluate=true);
+
+  parameter Real conMXi = conM * 100
+    "Conversion factor to normalize the mass fraction (which usually is around 0.01, hence the factor 100)"
+    annotation(Evaluate=true);
+
+  parameter Real conU = conM/(mSenFac*cp_default)/20
+    "Conversion factor to normalize state for internal energy"
+    annotation(Evaluate=true);
+
+  parameter Real conMC[Medium.nC] = conM ./ C_nominal
+    "Conversion factor to normalize state for trace substances"
+    annotation(Evaluate=true);
+
   Medium.EnthalpyFlowRate ports_H_flow[nPorts];
   Modelica.SIunits.MassFlowRate ports_mXi_flow[nPorts,Medium.nXi];
   Medium.ExtraPropertyFlowRate ports_mC_flow[nPorts,Medium.nC];
@@ -412,14 +465,20 @@ Annex60.Fluid.MixingVolumes.MixingVolume</a>.
 </html>", revisions="<html>
 <ul>
 <li>
+January 20, 2016, by Michael Wetter:<br/>
+Introduced auxiliary variables for the states in order to have scaling near unity.<br/>
+This is for
+<a href=\"https://github.com/lbl-srg/modelica-buildings/issues/629\">#629</a>.
+</li>
+<li>
 December 22, 2016, by Michael Wetter:<br/>
 Set nominal value for <code>U</code>.<br/>
-This if or <a href=\"https://github.com/iea-annex60/modelica-annex60/issues/637\">637</a>.
+This is or <a href=\"https://github.com/iea-annex60/modelica-annex60/issues/637\">637</a>.
 <li>
 February 19, 2016 by Filip Jorissen:<br/>
 Added outputs UOut, mOut, mXiOut, mCOut for being able to
 check conservation of quantities.
-This if or <a href=\"https://github.com/iea-annex60/modelica-annex60/issues/247\">
+This is or <a href=\"https://github.com/iea-annex60/modelica-annex60/issues/247\">
 issue 247</a>.
 </li>
 <li>
